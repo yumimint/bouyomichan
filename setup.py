@@ -6,6 +6,6 @@ setup(
     description='Text to speech interface for BouyomiChan via http.',
     author='yumimint',
     author_email='82876715+yumimint@users.noreply.github.com',
-    url='headfirstlabs.com',
+    url='https://github.com/yumimint/bouyomichan',
     py_modules=['bouyomichan'],
 )
