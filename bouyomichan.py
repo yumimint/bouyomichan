@@ -1,16 +1,13 @@
-#!/usr/bin/python3
-# -*- coding: utf8 -*-
-# queueとthreadingを用いて
-# 棒読みちゃんが起動していないと処理がブロックしてしまうのを回避
+# bouyomichan
+# Text to speech interface for BouyomiChan via http.
 import json
 import queue
 import threading
 import urllib.request
 from urllib.error import URLError
 
-_talk_q = queue.Queue()
-
 DEFAULT_HOST = 'localhost:50080'
+_talk_q = queue.Queue()
 
 
 def talk(text, voice=None, volume=None, speed=None, tone=None, host=None):
@@ -22,7 +19,7 @@ def _talk_daemon():
     while True:
         text, voice, volume, speed, tone, host = _talk_q.get()
         text = urllib.parse.quote(text)
-        post = len(text) >= 1000 # textが長すぎるときはPOSTメソッドを使う
+        post = len(text) >= 1000  # textが長すぎるときはPOSTメソッドを使う
         host = DEFAULT_HOST if host is None else host
         params = {}
         if post:
@@ -46,7 +43,7 @@ def _talk_daemon():
             else:
                 req = urllib.request.Request(url)
             urllib.request.urlopen(req)
-        except URLError: # 棒読みちゃんが起動していない
+        except URLError:  # 棒読みちゃんが起動していない
             while not _talk_q.empty():
                 _talk_q.get_nowait()
 
@@ -150,4 +147,4 @@ if __name__ == '__main__':
             s = str(i) if s == '' else s
             yield s
     talk(' '.join(fizzbuzz(1, 100)), speed=100, voice=1, volume=100)
-    time.sleep(1) # _talk_daemonが動く猶予を与える
+    time.sleep(1)  # _talk_daemonが動く猶予を与える
