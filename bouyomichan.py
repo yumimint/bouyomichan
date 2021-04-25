@@ -46,12 +46,12 @@ def _talk_daemon():
             else:
                 req = urllib.request.Request(url)
             urllib.request.urlopen(req)
-        except URLError:
+        except URLError: # 棒読みちゃんが起動していない
             while not _talk_q.empty():
                 _talk_q.get_nowait()
 
 
-def _get(command, host=None):
+def _cmd(command, host=None):
     host = DEFAULT_HOST if host is None else host
     url = f'http://{host}/{command}'
     req = urllib.request.Request(url)
@@ -65,7 +65,7 @@ def _get(command, host=None):
 def pause(host=None):
     """一時停止する"""
     try:
-        _get(pause.__name__, host)
+        _cmd("pause", host)
     except URLError:
         pass
 
@@ -73,7 +73,7 @@ def pause(host=None):
 def resume(host=None):
     """一時停止を解除する"""
     try:
-        _get(resume.__name__, host)
+        _cmd("resume", host)
     except URLError:
         pass
 
@@ -81,7 +81,7 @@ def resume(host=None):
 def skip(host=None):
     """現在の行をスキップして次の行へ"""
     try:
-        _get(skip.__name__, host)
+        _cmd("skip", host)
     except URLError:
         pass
 
@@ -89,7 +89,7 @@ def skip(host=None):
 def clear(host=None):
     """全ての行をキャンセルする"""
     try:
-        _get(clear.__name__, host)
+        _cmd("clear", host)
     except URLError:
         pass
 
@@ -97,7 +97,7 @@ def clear(host=None):
 def getpause(host=None):
     """一時停止中かどうかを取得する"""
     try:
-        return _get(getpause.__name__, host)
+        return _cmd("getpause", host)
     except URLError:
         return None
 
@@ -105,7 +105,7 @@ def getpause(host=None):
 def getnowplaying(host=None):
     """音声再生中かどうかを取得する"""
     try:
-        return _get(getnowplaying.__name__, host)
+        return _cmd("getnowplaying", host)
     except URLError:
         return None
 
@@ -113,7 +113,7 @@ def getnowplaying(host=None):
 def getnowtaskid(host=None):
     """現在のタスク番号を取得する"""
     try:
-        return _get(getnowtaskid.__name__, host)
+        return _cmd("getnowtaskid", host)
     except URLError:
         return None
 
@@ -121,7 +121,7 @@ def getnowtaskid(host=None):
 def gettalktaskcount(host=None):
     """残りのタスク数を取得する"""
     try:
-        return _get(gettalktaskcount.__name__, host)
+        return _cmd("gettalktaskcount", host)
     except URLError:
         return None
 
@@ -129,7 +129,7 @@ def gettalktaskcount(host=None):
 def getvoicelist(host=None):
     """利用可能な音声合成エンジンの一覧を取得する"""
     try:
-        return _get(getvoicelist.__name__, host)
+        return _cmd("getvoicelist", host)
     except URLError:
         return None
 
@@ -150,4 +150,4 @@ if __name__ == '__main__':
             s = str(i) if s == '' else s
             yield s
     talk(' '.join(fizzbuzz(1, 100)), speed=100, voice=1, volume=100)
-    time.sleep(1)
+    time.sleep(1) # _talk_daemonが動く猶予を与える
