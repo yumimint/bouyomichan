@@ -5,10 +5,11 @@ import queue
 import socket
 import struct
 import threading
+import logging
 
 DEFAULT_HOST = ('localhost', 50001)
 
-_talk_q = queue.Queue()
+logger = logging.getLogger(__name__)
 
 
 class Cmd(enum.IntEnum):
@@ -22,97 +23,126 @@ class Cmd(enum.IntEnum):
     GetTaskCount = 0x0130
 
 
-def talk(text, voice=None, volume=None, speed=None, tone=None, host=None):
+def talk(text: str, *, putq=True, **kwargs):
     """読み上げる"""
-    _talk_q.put((text, voice, volume, speed, tone, host))
+
+    if putq:
+        self = talk
+        if not hasattr(self, "q"):
+            self.q = queue.Queue()
+            self.th = threading.Thread(target=_talk_daemon, daemon=True)
+            self.th.start()
+        self.q.put((text, kwargs))
+        return
+
+    host = kwargs.get("host") or DEFAULT_HOST
+    timeout = kwargs.get("timeout")
+    message = bytes(text, "utf-8")
+    code = 0  # 0:UTF-8, 1:Unicode, 2:Shift-JIS
+
+    data = struct.pack(
+        "<hhhhhbL",
+        Cmd.Talk,
+        kwargs.get("speed") or -1,
+        kwargs.get("tone") or -1,
+        kwargs.get("volume") or -1,
+        kwargs.get("voice") or 0,
+        code, len(message))
+    data += message
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        if timeout is not None:
+            sock.settimeout(timeout)
+        try:
+            sock.connect(host)
+            sock.sendall(data)
+        except socket.error as e:
+            logger.error(e)
+            return None
+
+    if logger.isEnabledFor(logging.DEBUG):
+        if len(text) > 40:
+            text = text[:40] + "..."
+        logger.debug(text + " " + str(kwargs))
+
+    return 0
 
 
 def _talk_daemon():
+    logger.debug("_talk_daemon started")
     while True:
-        text, voice, volume, speed, tone, host = _talk_q.get()
-        cmdid = Cmd.Talk
-        voice = voice or 0
-        volume = volume or -1
-        speed = speed or -1
-        tone = tone or -1
-        code = 0  # 0:UTF-8, 1:Unicode, 2:Shift-JIS
-        message = bytes(text, "utf-8")
-        length = len(message)
-        data = struct.pack("<hhhhhbL", cmdid, speed, tone,
-                           volume, voice, code, length) + message
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.connect(host or DEFAULT_HOST)
-                sock.sendall(data)
-        except socket.error:  # 棒読みちゃんが起動していない
-            while not _talk_q.empty():
-                _talk_q.get_nowait()
+        text, kwargs = talk.q.get()
+        rc = talk(text, **kwargs, putq=False)
+        if rc is None:  # 棒読みちゃんが起動していない
+            while not talk.q.empty():
+                talk.q.get_nowait()
 
 
-def _cmd(host, cmdid: int, res_len=0):
+def _cmd(host, cmdid: Cmd, timeout):
+    host = host or DEFAULT_HOST
+    data = struct.pack("<h", cmdid)
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.connect(host or DEFAULT_HOST)
-            sock.sendall(struct.pack("<h", cmdid))
-            if res_len > 0:
-                buf = sock.recv(res_len)
-                return int.from_bytes(buf, "little")
-
-    except socket.error:
+            if timeout is not None:
+                sock.settimeout(timeout)
+            sock.connect(host)
+            sock.sendall(data)
+            buf = sock.recv(4)
+    except socket.error as e:
+        logger.error(e)
         return None
 
-    return None
+    return int.from_bytes(buf, "little")
 
 
-def pause(host=None):
+def pause(host=None, timeout=None):
     """一時停止する"""
-    return _cmd(host, Cmd.Pause)
+    return _cmd(host, Cmd.Pause, timeout)
 
 
-def resume(host=None):
+def resume(host=None, timeout=None):
     """一時停止を解除する"""
-    return _cmd(host, Cmd.Resume)
+    return _cmd(host, Cmd.Resume, timeout)
 
 
-def skip(host=None):
+def skip(host=None, timeout=None):
     """現在の行をスキップして次の行へ"""
-    return _cmd(host, Cmd.Skip)
+    return _cmd(host, Cmd.Skip, timeout)
 
 
-def clear(host=None):
+def clear(host=None, timeout=None):
     """全ての行をキャンセルする"""
-    return _cmd(host, Cmd.Clear)
+    return _cmd(host, Cmd.Clear, timeout)
 
 
-def getpause(host=None):
+def getpause(host=None, timeout=None):
     """一時停止中かどうかを取得する"""
-    return _cmd(host, Cmd.GetPause, 1)
+    return _cmd(host, Cmd.GetPause, timeout)
 
 
-def getnowplaying(host=None):
+def getnowplaying(host=None, timeout=None):
     """音声再生中かどうかを取得する"""
-    return _cmd(host, Cmd.GetNowPlaying, 1)
+    return _cmd(host, Cmd.GetNowPlaying, timeout)
 
 
-def gettalktaskcount(host=None):
+def gettalktaskcount(host=None, timeout=None):
     """残りのタスク数を取得する"""
-    return _cmd(host, Cmd.GetTaskCount, 4)
+    return _cmd(host, Cmd.GetTaskCount, timeout)
 
-
-_talkth = threading.Thread(target=_talk_daemon, daemon=True)
-_talkth.start()
 
 if __name__ == '__main__':
-    import time
+    logging.basicConfig(level=logging.DEBUG,
+                        format='%(levelname)s : %(asctime)s : %(message)s')
 
-    # talk("棒読みちゃんテスト")
-    # talk("three, two, one, zero!")
+    if talk("", putq=False, timeout=0.1) != 0:
+        logger.warning("BouyomiChan has not available")
 
-    def fizzbuzz(a, b):
-        for i in range(a, b + 1):
-            s = '馬' if (i % 3) == 0 else ''
-            s += '鹿' if (i % 5) == 0 else ''
-            s = str(i) if s == '' else s
-            yield s
-    talk(' '.join(fizzbuzz(1, 100)), speed=100, voice=1, volume=100)
-    time.sleep(1)  # _talk_daemonが動く猶予を与える
+    talk("棒読みちゃんテスト")
+
+    voicez = "デフォルト 女性1 女性2 男性1 男性2 中性 ロボット 機械1 機械2".split(" ")
+    for i, text in enumerate(voicez):
+        talk(f"{i}番 {text}", voice=i, speed=120)
+
+    # _talk_daemonが動く猶予を与える
+    from time import sleep
+    sleep(5)
