@@ -1,11 +1,25 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
+# reading long description from file
+with open("README.md", encoding="utf-8") as file:
+    long_description = file.read()
+
+
+# specify requirements of your package here
+REQUIREMENTS = []
+
+
+# calling the setup function
 setup(
     name='bouyomichan',
-    version='0.1.0',
-    description='Text to speech interface for BouyomiChan via http.',
+    version='0.1.1',
+    description='Text to speech interface for BouyomiChan',
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     author='yumimint',
-    author_email='82876715+yumimint@users.noreply.github.com',
+    author_email='i.yumimint@gmail.com',
     url='https://github.com/yumimint/bouyomichan',
     py_modules=['bouyomichan'],
-)
+    license="Apache License 2.0",
+    packages=find_packages(include=["bouyomichan"]),
+    install_requires=REQUIREMENTS)
