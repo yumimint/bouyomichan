@@ -207,7 +207,7 @@ if __name__ == '__main__':
 
     talk("棒読みちゃんテスト")
 
-    voicez = "デフォルト 女性1 女性2 男性1 男性2 中性 ロボット 機械1 機械2".split(" ")
+    voicez = "デフォルト 女性1 女性2 男性1 男性2 中性 ロボット 機械1 機械2".split()
     for i, text in enumerate(voicez):
         talk(f"{i}番 {text}", voice=i, tone=125)
 
