@@ -1,14 +1,13 @@
 # bouyomichan
 # Text to speech interface for BouyomiChan via socket.
 import enum
+import logging
 import queue
 import socket
 import struct
 import threading
-import logging
 
-
-DEFAULT_HOST = ('localhost', 50001)
+DEFAULT_HOST = ("localhost", 50001)
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +66,9 @@ def talk(text: str, *, putq=True, **kwargs):
         kwargs.get("tone", -1),
         kwargs.get("volume", -1),
         kwargs.get("voice", 0),
-        code, len(message))
+        code,
+        len(message),
+    )
     data += message
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
@@ -198,9 +199,10 @@ def gettalktaskcount(*, host=None, timeout=None):
     return _cmd(host, Cmd.GetTaskCount, timeout)
 
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG,
-                        format='%(levelname)s : %(asctime)s : %(message)s')
+if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.DEBUG, format="%(levelname)s : %(asctime)s : %(message)s"
+    )
 
     if getnowplaying(timeout=0.1) is None:
         logger.warning("BouyomiChan has not available")
@@ -213,4 +215,5 @@ if __name__ == '__main__':
 
     # _talk_daemonが動く猶予を与える
     from time import sleep
+
     sleep(5)
