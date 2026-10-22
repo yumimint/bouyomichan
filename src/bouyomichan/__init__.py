@@ -1,5 +1,3 @@
-# bouyomichan
-# Text to speech interface for BouyomiChan via socket.
 import enum
 import logging
 import queue
@@ -23,15 +21,12 @@ class Cmd(enum.IntEnum):
     GetTaskCount = 0x0130
 
 
-def talk(text: str, *, putq=True, **kwargs):
+def talk(text: str, **kwargs):
     """Read aloud the text.
 
     Parameters
     ----------
     text : str
-    putq : bool default=True
-        If False, no queue is used,
-        Send talk command to bouyomichan.
     speed : int  default=-1 (50-300)
     tone : int   default=-1 (50-200)
     volume : int default=-1 (0-100)
@@ -45,33 +40,35 @@ def talk(text: str, *, putq=True, **kwargs):
     ------
         socket.error
     """
-    if putq:
-        self = talk
-        if not hasattr(self, "q"):
-            self.q = queue.Queue()
-            self.th = threading.Thread(target=_talk_daemon, daemon=True)
-            self.th.start()
-        self.q.put((text, kwargs))
-        return
+    if hasattr(talk, "q"):
+        q: queue.Queue = talk.q
+    else:
+        q = queue.Queue()
+        talk.q = q  # ty: ignore[unresolved-attribute]
+        threading.Thread(target=lambda: _talk_daemon(q), daemon=True).start()
 
-    host = kwargs.get("host", DEFAULT_HOST)
-    timeout = kwargs.get("timeout")
-    message = bytes(text, "utf-8")
-    code = 0  # 0:UTF-8, 1:Unicode, 2:Shift-JIS
+    q.put((text, kwargs))
 
-    data = struct.pack(
-        "<hhhhhbL",
-        Cmd.Talk,
-        kwargs.get("speed", -1),
-        kwargs.get("tone", -1),
-        kwargs.get("volume", -1),
-        kwargs.get("voice", 0),
-        code,
-        len(message),
-    )
-    data += message
+
+def _talk_daemon(q: queue.Queue):
+    logger.debug("_talk_daemon started")
+    while True:
+        text, kwargs = q.get()
+        try:
+            _send_talk_command(text, **kwargs)
+        except OSError:
+            while not q.empty():
+                q.get_nowait()
+        except Exception as e:
+            logger.exception(e)  # noqa: TRY401
+
+
+def _send_talk_command(text: str, **kwargs):
+    data = _make_talk_data(text, **kwargs)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        host = kwargs.get("host", DEFAULT_HOST)
+        timeout = kwargs.get("timeout")
         if timeout is not None:
             sock.settimeout(timeout)
         sock.connect(host)
@@ -83,20 +80,24 @@ def talk(text: str, *, putq=True, **kwargs):
         logger.debug(text + " " + str(kwargs))
 
 
-def _talk_daemon():
-    logger.debug("_talk_daemon started")
-    while True:
-        text, kwargs = talk.q.get()
-        try:
-            talk(text, **kwargs, putq=False)
-        except socket.error:
-            while not talk.q.empty():
-                talk.q.get_nowait()
-        except Exception as e:
-            logger.error(e)
+def _make_talk_data(text: str, **kwargs) -> bytes:
+    message = bytes(text, "utf-8")
+    code = 0  # 0:UTF-8, 1:Unicode, 2:Shift-JIS
+    data = struct.pack(
+        "<hhhhhbL",
+        Cmd.Talk,
+        kwargs.get("speed", -1),
+        kwargs.get("tone", -1),
+        kwargs.get("volume", -1),
+        kwargs.get("voice", 0),
+        code,
+        len(message),
+    )
+    data += message
+    return data
 
 
-def _cmd(host, cmdid: Cmd, timeout):
+def _send_command(host, cmdid: Cmd, timeout):
     """Send command to bouyomichan.
 
     Returns
@@ -113,7 +114,7 @@ def _cmd(host, cmdid: Cmd, timeout):
             sock.connect(host)
             sock.sendall(data)
             buf = sock.recv(4)
-    except socket.error as e:
+    except OSError as e:
         logger.error(e)
         return None
 
@@ -128,7 +129,7 @@ def pause(*, host=None, timeout=None):
     0 : success
     None : socket error
     """
-    return _cmd(host, Cmd.Pause, timeout)
+    return _send_command(host, Cmd.Pause, timeout)
 
 
 def resume(*, host=None, timeout=None):
@@ -139,7 +140,7 @@ def resume(*, host=None, timeout=None):
     0 : success
     None : socket error
     """
-    return _cmd(host, Cmd.Resume, timeout)
+    return _send_command(host, Cmd.Resume, timeout)
 
 
 def skip(*, host=None, timeout=None):
@@ -150,7 +151,7 @@ def skip(*, host=None, timeout=None):
     0 : success
     None : socket error
     """
-    return _cmd(host, Cmd.Skip, timeout)
+    return _send_command(host, Cmd.Skip, timeout)
 
 
 def clear(*, host=None, timeout=None):
@@ -161,7 +162,7 @@ def clear(*, host=None, timeout=None):
     0 : success
     None : socket error
     """
-    return _cmd(host, Cmd.Clear, timeout)
+    return _send_command(host, Cmd.Clear, timeout)
 
 
 def getpause(*, host=None, timeout=None):
@@ -173,7 +174,7 @@ def getpause(*, host=None, timeout=None):
     1 : paused
     None : socket error
     """
-    return _cmd(host, Cmd.GetPause, timeout)
+    return _send_command(host, Cmd.GetPause, timeout)
 
 
 def getnowplaying(*, host=None, timeout=None):
@@ -185,7 +186,7 @@ def getnowplaying(*, host=None, timeout=None):
     1 : playing
     None : socket error
     """
-    return _cmd(host, Cmd.GetNowPlaying, timeout)
+    return _send_command(host, Cmd.GetNowPlaying, timeout)
 
 
 def gettalktaskcount(*, host=None, timeout=None):
@@ -196,24 +197,4 @@ def gettalktaskcount(*, host=None, timeout=None):
     int
     None : socket error
     """
-    return _cmd(host, Cmd.GetTaskCount, timeout)
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.DEBUG, format="%(levelname)s : %(asctime)s : %(message)s"
-    )
-
-    if getnowplaying(timeout=0.1) is None:
-        logger.warning("BouyomiChan has not available")
-
-    talk("棒読みちゃんテスト")
-
-    voicez = "デフォルト 女性1 女性2 男性1 男性2 中性 ロボット 機械1 機械2".split()
-    for i, text in enumerate(voicez):
-        talk(f"{i}番 {text}", voice=i, tone=125)
-
-    # _talk_daemonが動く猶予を与える
-    from time import sleep
-
-    sleep(5)
+    return _send_command(host, Cmd.GetTaskCount, timeout)
